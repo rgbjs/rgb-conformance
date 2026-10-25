@@ -7,7 +7,7 @@
 // single-byte corruptions of them: the engine is run on every corruption,
 // each result is classified by the error the reference code raises, and a few
 // offsets per rule are kept, spread across the file.
-import { readFileSync, writeFileSync } from 'node:fs'
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
 
 import { validateConsignment } from '../engine/src/index.js'
 
@@ -67,11 +67,16 @@ json('vectors/cli-invoices.json').vectors.forEach((v, n) => {
 })
 
 // Consignments
-const files = {
-  'vectors/v011/demo.contract.rgb': { line: 'v0.11', contractId: 'rgb:v4Kpkuwn-yjzKgYa-5G5h0cc-lLVyr2B-hdpCTaR-KOe~agc' },
-  'vectors/v011/transfer-demo.transfer.rgb': { line: 'v0.11', contractId: 'rgb:epeKJw9q-4ciD_0S-NChLqoR-5INEwmm-lDL1OEH-ujhEX6Y' },
-  'vectors/v012/DemoToken.rgb': { line: 'v0.12', contractId: 'contract:nztjpjRX-_NVDDgd-EHENsqL-AKsGsyV-F6LzljB-X4WTv0Y' },
-  'vectors/v012/TransferDemo.transfer.rgb': { line: 'v0.12', contractId: 'contract:KA73QdAH-BFBUNYX-0jsaAXq-_wKsXwD-2VLkZ9Q-1yRYYkc' }
+// Every consignment file in vectors/v011 and vectors/v012. Each must be valid
+// (and, for v0.12, from a trusted issuer); its contract ID is recorded.
+const files = {}
+for (const line of ['v011', 'v012']) {
+  for (const name of readdirSync(new URL(`vectors/${line}/`, ROOT)).filter(n => n.endsWith('.rgb')).sort()) {
+    const path = `vectors/${line}/${name}`
+    const r = validateConsignment(bytes(path))
+    if (!r.valid || (r.issuer && !r.issuer.trusted)) throw new Error(`${path} is not a valid, trusted consignment: ${r.error ?? 'untrusted issuer'}`)
+    files[path] = { line: r.line, contractId: r.contractId }
+  }
 }
 const valid = {
   'v0.11': ['v011-file-header', 'v011-strict-decoding', 'v011-known-schema', 'v011-trusted-types', 'v011-schema-match', 'v011-schema-conformance', 'v011-scripts-present', 'v011-aluvm'],
@@ -145,7 +150,7 @@ for (const [path, meta] of Object.entries(files)) {
   const base = validateConsignment(file)
   if (!base.valid || base.contractId !== meta.contractId) throw new Error(`${path} is not the expected valid consignment`)
   const name = path.split('/').pop()
-  const transfer = /transfer/.test(name)
+  const transfer = base.kind === 'transfer' || base.operations > 0
   vectors.push({
     id: `${meta.line === 'v0.11' ? 'v011' : 'v012'}-${name}-valid`,
     rules: [...valid[meta.line], ...(transfer ? transferValid[meta.line] : [])],
@@ -195,17 +200,23 @@ if (unclassified.size) {
 
 // A forged length prefix: the corruptions that made unpatched strict_encoding
 // 2.9.1 pre-allocate ~4.4 GB (see rules/v012.jsonld, bounded allocation).
-for (const byte of [7072, 7127, 7168]) {
+// The NftDemo one overflowed capacity in unpatched strict_types 2.9.1, which
+// also crashes the pinned rgb-wallet's `rgb accept`.
+for (const [file, byte, expect] of [
+  ['TransferDemo.transfer.rgb', 7072, 'reject'], ['TransferDemo.transfer.rgb', 7127, 'reject'],
+  ['TransferDemo.transfer.rgb', 7168, 'reject'], ['NftDemo.contract.rgb', 7958, 'differs']
+]) {
   vectors.push({
-    id: `v012-bounded-allocation-TransferDemo.transfer.rgb-byte-${byte}`,
+    id: `v012-bounded-allocation-${file}-byte-${byte}`,
     rules: ['v012-bounded-allocation'],
     kind: 'mutation',
     line: 'v0.12',
-    file: 'vectors/v012/TransferDemo.transfer.rgb',
+    file: `vectors/v012/${file}`,
     byte,
     xor: 1,
-    expect: 'reject',
-    noTrap: true
+    expect,
+    noTrap: true,
+    ...(expect === 'differs' ? { differs: 'state' } : {})
   })
 }
 

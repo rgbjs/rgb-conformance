@@ -88,9 +88,9 @@
           "label": "bounded allocation",
           "line": "v0.12",
           "level": "rgbjs",
-          "errorCode": "DecodeError (instead of an out-of-memory abort)",
-          "source": "strict_encoding 2.9.1 src/embedded.rs:514 (Vec::with_capacity(len)); fixed in rgbjs rust/patches/strict_encoding-2.9.1",
-          "comment": "A decoder must not allocate memory in proportion to a length prefix it hasn't checked against the data. Upstream 2.9.1 pre-allocates from the prefix, so one corrupted byte can request about 4.4 GB and abort a wasm or memory-limited process. A corrupted length must give a decode error.",
+          "errorCode": "DecodeError or a verdict (instead of an out-of-memory abort or capacity-overflow panic)",
+          "source": "strict_encoding 2.9.1 src/embedded.rs:514 and strict_types 2.9.1 src/value/decode.rs:91 (Vec::with_capacity(len)); fixed in rgbjs rust/patches/",
+          "comment": "A decoder must not allocate memory in proportion to a length it read from the data before checking it. Upstream strict_encoding and strict_types 2.9.1 pre-allocate from such lengths, so one corrupted byte can request about 4.4 GB (aborting a wasm or memory-limited process) or overflow capacity and panic. The pinned rgb-wallet 0.12.0-rc.3 crashes on rgb accept of such a file. A corrupted length must give a decode error or a verdict, never a crash.",
           "check": "∀ forged length: decode returns an error, never aborts"
         }
       ]
