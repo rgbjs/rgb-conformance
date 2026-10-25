@@ -31,7 +31,7 @@ h3 { font-size: 1.1rem; margin: 28px 0 6px; }
 table { border-collapse: collapse; width: 100%; font-size: 0.92rem; }
 th, td { text-align: left; vertical-align: top; padding: 8px 10px; border-bottom: 1px solid var(--line); }
 th { font-weight: 600; color: var(--muted); }
-td.id { white-space: nowrap; }
+td.id { min-width: 10em; }
 td.mono { overflow-wrap: anywhere; min-width: 12em; }
 th:nth-child(2), td:nth-child(2) { min-width: 16em; }
 .summary { font-size: 1.25rem; font-weight: 700; margin: 20px 0; }
