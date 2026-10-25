@@ -42,8 +42,8 @@ const rulesBody = modules.map((m, mi) => {
 ${m.sets.map((s, si) => `<h4 id="${s['@id'].replace('rgb:', '')}">4.${mi + 1}.${si + 1} ${esc(s.label)} <span class="pill ${line}">${esc(m.line)}</span></h4>
 <p>${code(s.comment)}</p>
 <div class="table-wrap"><table>
-<tr><th>Rule</th><th>Requirement</th><th>Level</th><th>Error</th><th>Source</th><th>Vectors</th></tr>
-${s.rules.map(r => { const id = r['@id'].replace('rgb:', ''); return `<tr id="${id}"><td class="id"><code>${id}</code></td><td>${code(r.comment)}<br><span class="muted mono">${esc(r.check)}</span></td><td><span class="pill ${r.level}">${r.level}</span></td><td class="mono">${esc(r.errorCode)}</td><td class="mono">${esc(r.source)}</td><td><a href="index.html#${id}">${perRule[id] || 0}</a></td></tr>` }).join('\n')}
+<tr><th>Rule</th><th>Requirement</th><th>Level</th><th>Error and source</th><th>Vectors</th></tr>
+${s.rules.map(r => { const id = r['@id'].replace('rgb:', ''); return `<tr id="${id}"><td class="id"><code>${id}</code></td><td>${code(r.comment)}<br><span class="muted mono">${esc(r.check)}</span></td><td><span class="pill ${r.level}">${r.level}</span></td><td class="mono">${esc(r.errorCode)}<br><span class="muted">${esc(r.source)}</span></td><td><a href="index.html#${id}">${perRule[id] || 0}</a></td></tr>` }).join('\n')}
 </table></div>`).join('\n')}`
 }).join('\n')
 
