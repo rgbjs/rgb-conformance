@@ -71,7 +71,7 @@ json('vectors/cli-invoices.json').vectors.forEach((v, n) => {
 // (and, for v0.12, from a trusted issuer); its contract ID is recorded.
 const files = {}
 for (const line of ['v011', 'v012']) {
-  for (const name of readdirSync(new URL(`vectors/${line}/`, ROOT)).filter(n => n.endsWith('.rgb')).sort()) {
+  for (const name of readdirSync(new URL(`vectors/${line}/`, ROOT)).filter(n => n.endsWith('.rgb') && !n.endsWith('.invalid.rgb')).sort()) {
     const path = `vectors/${line}/${name}`
     const r = validateConsignment(bytes(path))
     if (!r.valid || (r.issuer && !r.issuer.trusted)) throw new Error(`${path} is not a valid, trusted consignment: ${r.error ?? 'untrusted issuer'}`)
@@ -196,6 +196,30 @@ for (const [path, meta] of Object.entries(files)) {
 if (unclassified.size) {
   for (const u of unclassified) console.error('unclassified:', u)
   process.exit(1)
+}
+
+// Consignments that must be rejected as they are (*.invalid.rgb), with the
+// rule the reference code rejects them under.
+const invalidRule = { 'pfa-unsigned.invalid.rgb': 'v011-aluvm' }
+for (const line of ['v011', 'v012']) {
+  for (const name of readdirSync(new URL(`vectors/${line}/`, ROOT)).filter(n => n.endsWith('.invalid.rgb')).sort()) {
+    const path = `vectors/${line}/${name}`
+    const rule = invalidRule[name]
+    if (!rule) throw new Error(`${path}: no rule for this invalid consignment`)
+    let r
+    try { r = validateConsignment(bytes(path)) } catch (e) { r = { valid: false, error: e.message } }
+    if (r.valid) throw new Error(`${path} should be invalid`)
+    vectors.push({
+      id: `${rule}-${name}`,
+      rules: [rule],
+      kind: 'consignment',
+      line: line === 'v011' ? 'v0.11' : 'v0.12',
+      file: path,
+      expect: 'reject',
+      message: r.error.split('\n')[0].slice(0, 160),
+      source: `vectors/${line}/SOURCES.md`
+    })
+  }
 }
 
 // A forged length prefix: the corruptions that made unpatched strict_encoding

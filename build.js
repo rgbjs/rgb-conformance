@@ -65,7 +65,7 @@ const body = [
   section('Test vectors', 'vectors', `<p>${vectors.length} vectors (<a href="vectors/index.json"><code>vectors/index.json</code></a>), all copied into this repository; nothing is fetched at runtime.</p>
 <ul>
 <li><strong>${count('invoice')} invoice vectors.</strong> Every case in the invoice tests of <code>rgb-invoicing</code> 0.11.1 and <code>sonic-callreq</code> 0.12.0, real invoices printed by <code>rgb-cmd</code> 0.11.1 and <code>rgb-wallet</code> 0.12.0-rc.3, and each of those given to the other line's parser.</li>
-<li><strong>${count('consignment')} consignments.</strong> A contract and a transfer for each line, from the pinned CLIs and from offline generators that drive the reference wallet libraries (<a href="vectors/v011/SOURCES.md">v0.11</a>, <a href="vectors/v012/SOURCES.md">v0.12</a>).</li>
+<li><strong>${count('consignment')} consignments.</strong> Contracts and transfers for every v0.11 schema (NIA, CFA, UDA, IFA, PFA) and for the v0.12 RGB20, RGB21 and RGB25 issuers. They come from the pinned CLIs and from offline generators that drive the reference wallet libraries (<a href="vectors/v011/SOURCES.md">v0.11</a>, <a href="vectors/v012/SOURCES.md">v0.12</a>). Files named <code>*.invalid.rgb</code> must be rejected as they are, such as a PFA transfer without its issuer signature.</li>
 <li><strong>${count('mutation')} corruptions.</strong> Every single-byte change (one bit flipped) of each consignment was run through the reference code and classified by the rule it breaks; up to three per rule and file are kept as vectors. No corruption is accepted as the same contract with the same result.</li>
 </ul>
 <div class="table-wrap"><table><tr><th>Consignment</th><th>Bytes, all swept</th><th>Corruptions caught, by rule</th></tr>
