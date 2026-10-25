@@ -1,0 +1,12 @@
+The rules, runner, pages and tools in this repository are MIT licensed (see LICENSE).
+
+engine/ is a copy of rgbjs (https://github.com/rgbjs/rgbjs, MIT; version in
+engine/VERSION). Its wasm/ files are compiled from Apache-2.0 crates by
+rgb-protocol, RGB-WG, AluVM and LNP/BP; see rgbjs's NOTICE.
+
+vectors/ contains test data derived from those projects' test suites and
+produced with their CLIs and libraries (Apache-2.0); vectors/v011/SOURCES.md
+and vectors/v012/SOURCES.md say where each file comes from.
+
+tools/og-fonts/Inter.ttf is the Inter typeface, SIL Open Font License 1.1
+(tools/og-fonts/OFL.txt).

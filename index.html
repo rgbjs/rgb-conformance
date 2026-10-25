@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RGB conformance</title>
+<meta name="description" content="The rules of RGB, for both lines, tested live in your browser: upstream test vectors, real CLI invoices and consignments, and every single-byte corruption classified by the rule it breaks.">
+<link rel="canonical" href="https://rgbjs.github.io/rgb-conformance/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="RGB conformance">
+<meta property="og:url" content="https://rgbjs.github.io/rgb-conformance/">
+<meta property="og:title" content="RGB conformance: the rules, tested live in your browser">
+<meta property="og:description" content="Rules for both RGB lines as JSON-LD, a generated specification, and a test suite that runs every vector in your browser.">
+<meta property="og:image" content="https://rgbjs.github.io/rgb-conformance/img/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="RGB conformance: the rules, tested live in your browser">
+<meta name="twitter:description" content="Rules for both RGB lines as JSON-LD, a generated specification, and a test suite that runs every vector in your browser.">
+<meta name="twitter:image" content="https://rgbjs.github.io/rgb-conformance/img/og.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top"><nav><a class="brand" href="index.html">RGB conformance</a><a href="index.html">Test suite</a><a href="spec.html">Specification</a><a href="https://github.com/rgbjs/rgb-conformance">Source</a></nav></header>
+<main>
+  <div class="note">An independent community project, not affiliated with RGB-WG, the RGB Protocol Association or LNP/BP. Early work: not for real funds.</div>
+  <h1>The rules of RGB, tested live in your browser</h1>
+  <p class="lede">RGB is now two incompatible protocols, v0.11 and v0.12. Each has rules that decide whether an invoice parses and whether a consignment is valid. This page runs a test suite for those rules, for both lines, right here.</p>
+  <div id="summary" class="summary">Loading the engine…</div>
+
+  <h2>How it works</h2>
+  <p><strong>The rules.</strong> Each rule is one invariant: a consignment's types must match the trusted ones, a witness must close the seals it spends, and so on. They are written as data in <a href="rules/v011.jsonld">rules/v011.jsonld</a> and <a href="rules/v012.jsonld">rules/v012.jsonld</a>, and the <a href="spec.html">specification</a> is generated from them.</p>
+  <p><strong>The vectors.</strong> Every case from the upstream invoice tests, real invoices and consignments from the CLIs, and corruptions: every single-byte change of each consignment was run through the reference code and filed under the rule it breaks.</p>
+  <p><strong>The engine.</strong> <a href="https://github.com/rgbjs/rgbjs">rgbjs</a>: each line's own Rust crates compiled to WebAssembly. A copy is in this repository, and nothing is fetched from anywhere else.</p>
+  <p>PASS means the engine gave the reference verdict: it accepted what the reference code accepts, rejected what it rejects, and never showed a corrupted consignment as the original. Open a rule to see its vectors, and a vector to see the result.</p>
+
+  <div id="suite"></div>
+  <footer>Rules and vectors: <a href="https://github.com/rgbjs/rgb-conformance">github.com/rgbjs/rgb-conformance</a>. Engine: <span id="engine"></span>. Inspired by <a href="https://bitcoin-kernel.com">bitcoin-kernel</a>.</footer>
+</main>
+<script type="module">
+import { loadRules, run } from './lib/runner.js'
+
+const $ = s => document.querySelector(s)
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e }
+const json = async p => (await fetch(p)).json()
+const bytes = async p => new Uint8Array(await (await fetch(p)).arrayBuffer())
+
+try {
+  const modules = await loadRules(json)
+  const index = await json('vectors/index.json')
+  $('#engine').textContent = index.engine
+  const rows = new Map()
+  for (const m of modules) {
+    const line = m.line === 'v0.11' ? 'v011' : 'v012'
+    const h = el('h2', null, m.label)
+    h.id = m['@id'].replace('rgb:', '')
+    $('#suite').append(h, el('p', 'muted', m.comment))
+    for (const s of m.sets) {
+      $('#suite').append(el('h3', null, s.label))
+      for (const r of s.rules) {
+        const id = r['@id'].replace('rgb:', '')
+        const d = el('details', 'rule')
+        d.id = id
+        const sum = el('summary')
+        const status = el('span', 'pill wait', '…')
+        sum.append(status, el('span', 'name', r.label), el('span', `pill ${line}`, m.line), el('span', `pill ${r.level}`, r.level), el('code', null, id))
+        const list = el('div')
+        const more = el('p', 'muted')
+        more.innerHTML = `<a href="spec.html#${id}">In the specification</a> · <span class="mono"></span>`
+        more.querySelector('.mono').textContent = r.source
+        d.append(sum, el('p', 'req', r.comment), more, list)
+        $('#suite').append(d)
+        rows.set(id, { status, list, pass: 0, fail: 0 })
+      }
+    }
+  }
+  if (location.hash) document.getElementById(location.hash.slice(1))?.setAttribute('open', '')
+
+  const t0 = performance.now()
+  const engine = await import('./engine/src/index.js')
+  $('#summary').textContent = `Engine loaded in ${Math.round(performance.now() - t0)} ms. Running ${index.vectors.length} vectors…`
+  const { pass, fail } = await run({
+    engine, json, bytes,
+    onResult ({ vector, pass, detail }) {
+      for (const id of vector.rules) {
+        const row = rows.get(id)
+        pass ? row.pass++ : row.fail++
+        row.status.className = `pill ${row.fail ? 'fail' : 'pass'}`
+        row.status.textContent = row.fail ? `${row.fail} FAIL` : `${row.pass} PASS`
+        const v = el('details')
+        const s = el('summary', 'vec')
+        s.append(el('span', `pill ${pass ? 'pass' : 'fail'}`, pass ? 'PASS' : 'FAIL'), el('span', 'vid mono', vector.kind === 'invoice' ? vector.input : vector.id))
+        const info = { expect: vector.expect, ...(vector.byte != null ? { file: vector.file, byte: vector.byte, xor: vector.xor } : {}), ...(vector.source ? { source: vector.source } : {}) }
+        v.append(s, el('pre', null, `${JSON.stringify(info, null, 2)}\n\n${detail}`))
+        row.list.append(v)
+      }
+    }
+  })
+  $('#summary').textContent = `${pass} of ${pass + fail} vectors pass, across ${rows.size} rules`
+  $('#summary').className = `summary ${fail ? 'fail' : 'pass'}`
+} catch (err) {
+  $('#summary').textContent = `Couldn't run the suite: ${err.message}`
+  $('#summary').className = 'summary fail'
+  console.error(err)
+}
+</script>
+</body>
+</html>

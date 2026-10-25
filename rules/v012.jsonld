@@ -1,0 +1,250 @@
+{
+  "@context": "context.jsonld",
+  "@graph": [
+    {
+      "@id": "rgb:v012",
+      "@type": "Module",
+      "label": "RGB v0.12",
+      "line": "v0.12",
+      "version": "0.0.1",
+      "comment": "Rules for the RGB v0.12 line (RGB-WG / LNP/BP), as implemented by rgb-std and rgb-invoice 0.12.0-rc.3, rgb-core, sonic-api, sonic-callreq, hypersonic and ultrasonic 0.12.0."
+    },
+    {
+      "@id": "rgb:v012-invoices",
+      "@type": "RuleSet",
+      "module": "rgb:v012",
+      "label": "Invoices",
+      "phase": "invoice",
+      "comment": "Parsing a contract: invoice string. Grammar: contract:<chain>@<contract>/[<api>/][<method>/[<state>/]]<value>@<seal>/[?query].",
+      "rules": [
+        {
+          "@id": "rgb:v012-invoice-scheme",
+          "@type": "ValidationRule",
+          "label": "scheme",
+          "line": "v0.12",
+          "level": "upstream",
+          "errorCode": "ParseInvoiceError::NoScheme; CallReqParseError (invalid contract call request URI scheme)",
+          "source": "sonic-callreq 0.12.0 src/uri.rs; rgb-invoice 0.12.0-rc.3 src/lib.rs:132",
+          "comment": "An invoice is a URI with the scheme contract. A v0.11 rgb: invoice is rejected, so the two lines' invoices can't be confused.",
+          "check": "invoice.scheme == \"contract\""
+        },
+        {
+          "@id": "rgb:v012-invoice-roundtrip",
+          "@type": "ValidationRule",
+          "label": "round trip",
+          "line": "v0.12",
+          "level": "upstream",
+          "errorCode": "-",
+          "source": "sonic-callreq 0.12.0 src/uri.rs:65 (Display for CallRequest)",
+          "comment": "A valid invoice prints back as it was given. Known deviation: with rgb-invoice's RgbInvoice type, CallScope's Display doesn't pass on the {:-} flag, so the contract ID prints with a second contract: prefix (contract:tb@contract:<id>, AluVM/sonic#27). Both forms parse to the same invoice; conforming implementations accept both.",
+          "check": "fold(to_string(parse(s))) == s, where fold removes the doubled contract: prefix"
+        },
+        {
+          "@id": "rgb:v012-invoice-fields",
+          "@type": "ValidationRule",
+          "label": "fields",
+          "line": "v0.12",
+          "level": "upstream",
+          "errorCode": "-",
+          "source": "sonic-callreq 0.12.0 src/data.rs:110 (CallRequest)",
+          "comment": "Parsing an invoice made by rgb-wallet recovers the contract, layer 1, value and seal (an at: auth token or a wout: witness output) given to rgb invoice.",
+          "check": "parse(rgb_invoice(contract, value, seal)) == {contract, value, seal}"
+        }
+      ]
+    },
+    {
+      "@id": "rgb:v012-files",
+      "@type": "RuleSet",
+      "module": "rgb:v012",
+      "label": "Consignment files",
+      "phase": "file",
+      "comment": "Reading a binary consignment: the 8-byte magic RGBCNSGN, a 2-byte file version, a consignment version byte, the contract ID, then the strict-encoded consignment.",
+      "rules": [
+        {
+          "@id": "rgb:v012-file-header",
+          "@type": "ValidationRule",
+          "label": "file header",
+          "line": "v0.12",
+          "level": "upstream",
+          "errorCode": "binfile magic/version error; DecodeError(\"unsupported future consignment version\")",
+          "source": "rgb-std 0.12.0-rc.3 src/contracts.rs:657 (CONSIGN_MAGIC_NUMBER), src/consignment.rs:124 (parse_consignment)",
+          "comment": "A consignment file starts with RGBCNSGN and file version 0, followed by consignment version 0. Later versions are rejected, not guessed at.",
+          "check": "bytes[0..8] == \"RGBCNSGN\" ∧ file_version == 0 ∧ consign_version == 0"
+        },
+        {
+          "@id": "rgb:v012-strict-decoding",
+          "@type": "ValidationRule",
+          "label": "strict decoding",
+          "line": "v0.12",
+          "level": "upstream",
+          "errorCode": "DecodeError (DataIntegrityError, BrokenMapOrder, BrokenSetOrder, RepeatedMapValue, RepeatedSetValue, EnumTagNotKnown, UnionTagNotKnown, Utf8, Io UnexpectedEof)",
+          "source": "strict_encoding 2.9.1 src/error.rs",
+          "comment": "The body is strict-encoded: maps and sets are sorted with no duplicates, enum and union tags are known, identifiers are valid, strings are UTF-8, reserved bytes have their defined value, and the data doesn't end early.",
+          "check": "strict_decode(body) succeeds ∧ encoding is canonical"
+        },
+        {
+          "@id": "rgb:v012-bounded-allocation",
+          "@type": "ValidationRule",
+          "label": "bounded allocation",
+          "line": "v0.12",
+          "level": "rgbjs",
+          "errorCode": "DecodeError (instead of an out-of-memory abort)",
+          "source": "strict_encoding 2.9.1 src/embedded.rs:514 (Vec::with_capacity(len)); fixed in rgbjs rust/patches/strict_encoding-2.9.1",
+          "comment": "A decoder must not allocate memory in proportion to a length prefix it hasn't checked against the data. Upstream 2.9.1 pre-allocates from the prefix, so one corrupted byte can request about 4.4 GB and abort a wasm or memory-limited process. A corrupted length must give a decode error.",
+          "check": "∀ forged length: decode returns an error, never aborts"
+        }
+      ]
+    },
+    {
+      "@id": "rgb:v012-trust",
+      "@type": "RuleSet",
+      "module": "rgb:v012",
+      "label": "Articles and issuer trust",
+      "phase": "trust",
+      "comment": "A v0.12 consignment carries its articles: the codex (which the contract ID commits to) and the semantics (APIs, types, libraries), which the contract ID does not commit to.",
+      "rules": [
+        {
+          "@id": "rgb:v012-header-contract",
+          "@type": "ValidationRule",
+          "label": "header names the contract",
+          "line": "v0.12",
+          "level": "rgbjs",
+          "errorCode": "rgbjs: header names contract … but the articles are for …",
+          "source": "rgbjs rust/v012/src/lib.rs (validate_consignment)",
+          "comment": "The contract ID in the file header equals the ID computed from the articles. Upstream reads the header ID to decide whether the contract is known, then imports the articles under their own ID; rgbjs rejects a mismatch.",
+          "check": "header.contract_id == articles.contract_id"
+        },
+        {
+          "@id": "rgb:v012-genesis-codex",
+          "@type": "ValidationRule",
+          "label": "genesis names the codex",
+          "line": "v0.12",
+          "level": "rgbjs",
+          "errorCode": "rgbjs: genesis names codex … but the contract uses …",
+          "source": "ultrasonic 0.12.0 src/operation.rs:282 (Genesis.codex_id), src/issue.rs:79 (Issue::commit_encode)",
+          "comment": "Genesis carries a codex_id field that neither the contract ID nor validation uses: the contract ID commits to the codex in the issue instead. rgbjs rejects a genesis whose codex_id differs from that codex.",
+          "check": "genesis.codex_id == issue.codex.codex_id"
+        },
+        {
+          "@id": "rgb:v012-codex-libs",
+          "@type": "ValidationRule",
+          "label": "codex libraries present",
+          "line": "v0.12",
+          "level": "upstream",
+          "errorCode": "SemanticError::MissingCodexLib",
+          "source": "sonic-api 0.12.0 src/api.rs:579",
+          "comment": "Every zk-AluVM library the codex verifiers call is in the articles.",
+          "check": "∀ lib ∈ codex.verifier_libs: lib ∈ semantics.codex_libs"
+        },
+        {
+          "@id": "rgb:v012-issuer-trust",
+          "@type": "ValidationRule",
+          "label": "trusted issuer",
+          "line": "v0.12",
+          "level": "rgbjs",
+          "errorCode": "result.issuer.trusted == false",
+          "source": "sonic-api 0.12.0 src/issuer.rs:58 (IssuerId), src/api.rs:193 (Semantics commit_encode)",
+          "comment": "The semantics say what the state means but travel outside the contract ID, so they are trusted only when they match a known issuer. The issuer ID's checksum covers type IDs but not type contents (strict_types TypeSystem::id hashes the keys only), so rgbjs requires the full semantics to match, names included.",
+          "check": "trusted ⇔ ∃ issuer ∈ known: issuer.id == id(semantics) ∧ issuer.semantics == semantics"
+        }
+      ]
+    },
+    {
+      "@id": "rgb:v012-operations",
+      "@type": "RuleSet",
+      "module": "rgb:v012",
+      "label": "Genesis and operations",
+      "phase": "operation",
+      "comment": "Every operation is evaluated into the contract: its codex verifier passes and the seals it defines and spends are consistent.",
+      "rules": [
+        {
+          "@id": "rgb:v012-contract-id",
+          "@type": "ValidationRule",
+          "label": "contract ID commits to issue",
+          "line": "v0.12",
+          "level": "informative",
+          "errorCode": "-",
+          "source": "ultrasonic 0.12.0 src/issue.rs:76 (Issue::commit_encode)",
+          "comment": "The contract ID commits to the issue: version, metadata, codex ID and genesis. Changing them yields a different contract.",
+          "check": "contract_id == commit(issue.version, issue.meta, codex_id, genesis_opid)"
+        },
+        {
+          "@id": "rgb:v012-same-contract",
+          "@type": "ValidationRule",
+          "label": "operations under the contract",
+          "line": "v0.12",
+          "level": "upstream",
+          "errorCode": "CallError::WrongContract",
+          "source": "ultrasonic 0.12.0 src/codex.rs:296",
+          "comment": "Every operation in the consignment names this contract.",
+          "check": "∀ op: op.contract_id == contract_id"
+        },
+        {
+          "@id": "rgb:v012-verify-script",
+          "@type": "ValidationRule",
+          "label": "codex verifier",
+          "line": "v0.12",
+          "level": "upstream",
+          "errorCode": "CallError::NotFound, CallError::Script",
+          "source": "ultrasonic 0.12.0 src/codex.rs:308-342",
+          "comment": "Each operation calls a verifier its codex defines, and passes that zk-AluVM verifier.",
+          "check": "∀ op: codex.verify(op) == ok"
+        },
+        {
+          "@id": "rgb:v012-seal-definitions",
+          "@type": "ValidationRule",
+          "label": "seal definitions",
+          "line": "v0.12",
+          "level": "upstream",
+          "errorCode": "VerificationError::NoSealDefinition, VerificationError::SealsDefinitionMismatch",
+          "source": "rgb-core 0.12.0 src/verify.rs:283-286",
+          "comment": "Every cell an operation spends has a known seal definition, and the seals an operation reveals match the auth tokens in its outputs.",
+          "check": "∀ op, cell ∈ op.inputs: seal(cell) known ∧ ∀ (no, seal) ∈ op.seals: auth_token(seal) == op.outputs[no].auth"
+        }
+      ]
+    },
+    {
+      "@id": "rgb:v012-witnesses",
+      "@type": "RuleSet",
+      "module": "rgb:v012",
+      "label": "Witnesses and seals",
+      "phase": "witness",
+      "comment": "For transfers: each operation that spends seals comes with the witness transaction that closes them. Whether the witness is mined is a separate, on-chain check.",
+      "rules": [
+        {
+          "@id": "rgb:v012-witness-known",
+          "@type": "ValidationRule",
+          "label": "witness present",
+          "line": "v0.12",
+          "level": "upstream",
+          "errorCode": "VerificationError::NoWitness",
+          "source": "rgb-core 0.12.0 src/verify.rs:275",
+          "comment": "An operation that closes seals has a witness.",
+          "check": "∀ op ≠ genesis: op.witness ≠ ∅"
+        },
+        {
+          "@id": "rgb:v012-seal-closing",
+          "@type": "ValidationRule",
+          "label": "seal closing",
+          "line": "v0.12",
+          "level": "upstream",
+          "errorCode": "VerificationError::SealsNotClosed",
+          "source": "rgb-core 0.12.0 src/verify.rs:278",
+          "comment": "The witness transaction spends every seal the operation closes, and its anchor commits to the operation.",
+          "check": "∀ seal ∈ closed(op): seal.primary ∈ witness.inputs ∧ verify(anchor, witness, op)"
+        },
+        {
+          "@id": "rgb:v012-state-shows-changes",
+          "@type": "ValidationRule",
+          "label": "results show what changed",
+          "line": "v0.12",
+          "level": "informative",
+          "errorCode": "-",
+          "source": "rgb-std 0.12.0-rc.3 src/contract.rs:467 (Contract::state)",
+          "comment": "Some bytes are not committed to: a revealed seal definition that doesn't match its auth token (the allocation becomes unknown rather than moving), or uncommitted fields of an unsigned witness transaction (its txid changes). Such a consignment can still be valid, so results must show the state and witness IDs it produces.",
+          "check": "result.state and result.witnesses reflect the consignment"
+        }
+      ]
+    }
+  ]
+}

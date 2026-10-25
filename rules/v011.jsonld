@@ -1,0 +1,327 @@
+{
+  "@context": "context.jsonld",
+  "@graph": [
+    {
+      "@id": "rgb:v011",
+      "@type": "Module",
+      "label": "RGB v0.11",
+      "line": "v0.11",
+      "version": "0.0.1",
+      "comment": "Rules for the RGB v0.11 line (RGB Protocol Association: rgb-protocol and RGB-Tools crates), as implemented by rgb-invoicing, rgb-ops, rgb-consensus and rgb-schemas 0.11.1."
+    },
+    {
+      "@id": "rgb:v011-invoices",
+      "@type": "RuleSet",
+      "module": "rgb:v011",
+      "label": "Invoices",
+      "phase": "invoice",
+      "comment": "Parsing an rgb: invoice string. Grammar: rgb:<contract|~>/<schema|~>/<state|~>/<chain>:<utxob:…|wvout:…>[?query].",
+      "rules": [
+        {
+          "@id": "rgb:v011-invoice-scheme",
+          "@type": "ValidationRule",
+          "label": "scheme",
+          "line": "v0.11",
+          "level": "upstream",
+          "errorCode": "InvoiceParseError::Invalid, InvoiceParseError::InvalidScheme",
+          "source": "rgb-invoicing 0.11.1 src/parse.rs",
+          "comment": "An invoice is a URI with the scheme rgb. Anything else, including a missing scheme, is rejected.",
+          "check": "invoice.scheme == \"rgb\""
+        },
+        {
+          "@id": "rgb:v011-invoice-beneficiary",
+          "@type": "ValidationRule",
+          "label": "beneficiary",
+          "line": "v0.11",
+          "level": "upstream",
+          "errorCode": "InvoiceParseError::Beneficiary",
+          "source": "rgb-invoicing 0.11.1 src/parse.rs",
+          "comment": "The beneficiary is <chain>:utxob:<blinded seal> or <chain>:wvout:<address payload>[+<internal key>], with a known chain prefix (bc, tb3, tb4, sb, sbc, bcrt, lq, tl).",
+          "check": "parse(invoice.beneficiary) is BlindedSeal | WitnessVout"
+        },
+        {
+          "@id": "rgb:v011-invoice-expiry",
+          "@type": "ValidationRule",
+          "label": "expiry",
+          "line": "v0.11",
+          "level": "upstream",
+          "errorCode": "InvoiceParseError::InvalidExpiration",
+          "source": "rgb-invoicing 0.11.1 src/parse.rs",
+          "comment": "The expiry query parameter, if present, is a Unix timestamp in seconds.",
+          "check": "invoice.query.expiry is integer"
+        },
+        {
+          "@id": "rgb:v011-invoice-query",
+          "@type": "ValidationRule",
+          "label": "query and endpoints",
+          "line": "v0.11",
+          "level": "upstream",
+          "errorCode": "InvoiceParseError::InvalidQueryParam",
+          "source": "rgb-invoicing 0.11.1 src/parse.rs",
+          "comment": "Query parameters are key=value pairs. endpoints is a comma-separated list of transports with a host: rpc://, rpcs://, http(s)://, ws(s):// or storm://. Unknown keys are kept, not rejected.",
+          "check": "∀ p ∈ invoice.query: p has '=' ∧ (p.key ≠ endpoints ∨ all(parse_transport))"
+        },
+        {
+          "@id": "rgb:v011-invoice-roundtrip",
+          "@type": "ValidationRule",
+          "label": "round trip",
+          "line": "v0.11",
+          "level": "upstream",
+          "errorCode": "-",
+          "source": "rgb-invoicing 0.11.1 src/parse.rs (Display for RgbInvoice)",
+          "comment": "A valid invoice prints back exactly as it was given.",
+          "check": "to_string(parse(s)) == s"
+        },
+        {
+          "@id": "rgb:v011-invoice-fields",
+          "@type": "ValidationRule",
+          "label": "fields",
+          "line": "v0.11",
+          "level": "upstream",
+          "errorCode": "-",
+          "source": "rgb-invoicing 0.11.1 src/invoice.rs (RgbInvoice)",
+          "comment": "Parsing an invoice made by rgb-cmd recovers the contract, network, amount and beneficiary that were given to rgb invoice. Amounts are encoded in a digit-free base32 alphabet: BF is 100.",
+          "check": "parse(rgb_invoice(contract, amount, seal)) == {contract, amount, seal}"
+        }
+      ]
+    },
+    {
+      "@id": "rgb:v011-files",
+      "@type": "RuleSet",
+      "module": "rgb:v011",
+      "label": "Consignment files",
+      "phase": "file",
+      "comment": "Reading a binary consignment: RGB\\0 followed by TFR (transfer) or CON (contract), then the strict-encoded consignment.",
+      "rules": [
+        {
+          "@id": "rgb:v011-file-header",
+          "@type": "ValidationRule",
+          "label": "file header",
+          "line": "v0.11",
+          "level": "upstream",
+          "errorCode": "LoadError::InvalidMagic",
+          "source": "rgb-ops 0.11.1 src/containers/file.rs:63",
+          "comment": "A consignment file starts with RGB\\0 and the magic TFR or CON.",
+          "check": "bytes[0..4] == \"RGB\\0\" ∧ bytes[4..7] ∈ {TFR, CON}"
+        },
+        {
+          "@id": "rgb:v011-strict-decoding",
+          "@type": "ValidationRule",
+          "label": "strict decoding",
+          "line": "v0.11",
+          "level": "upstream",
+          "errorCode": "DecodeError (DataIntegrityError, BrokenMapOrder, BrokenSetOrder, RepeatedMapValue, RepeatedSetValue, Confinement, Io UnexpectedEof)",
+          "source": "rgb-strict-encoding 1.0.5 src/error.rs",
+          "comment": "The body is strict-encoded: maps and sets are sorted with no duplicates, collections stay within their bounds, identifiers aren't empty, reserved version bytes have their defined value, and the data doesn't end early. Any deviation is a decode error, not a different reading of the data.",
+          "check": "strict_decode(body) succeeds ∧ encoding is canonical"
+        },
+        {
+          "@id": "rgb:v011-consignment-type",
+          "@type": "ValidationRule",
+          "label": "consignment type",
+          "line": "v0.11",
+          "level": "upstream",
+          "errorCode": "Failure::Custom(\"invalid consignment type\")",
+          "source": "rgb-ops 0.11.1 src/containers/consignment.rs:376",
+          "comment": "The transfer flag inside the consignment matches the file type: TFR files hold transfers, CON files hold contracts, and a contract consignment has no bundles or terminals.",
+          "check": "consignment.transfer == (magic == TFR) ∧ (¬transfer → bundles = terminals = ∅)"
+        },
+        {
+          "@id": "rgb:v011-terminals-present",
+          "@type": "ValidationRule",
+          "label": "terminal bundles present",
+          "line": "v0.11",
+          "level": "upstream",
+          "errorCode": "Failure::Custom(\"terminal bundle id … is not present in the consignment\")",
+          "source": "rgb-ops 0.11.1 src/containers/consignment.rs:388",
+          "comment": "Every bundle a transfer names as a terminal is in the consignment.",
+          "check": "∀ b ∈ terminals.keys: b ∈ bundle_ids"
+        }
+      ]
+    },
+    {
+      "@id": "rgb:v011-trust",
+      "@type": "RuleSet",
+      "module": "rgb:v011",
+      "label": "Schema and type trust",
+      "phase": "trust",
+      "comment": "What the validator takes on trust. The consignment carries its schema and types, but they are checked against definitions the validator already has.",
+      "rules": [
+        {
+          "@id": "rgb:v011-known-schema",
+          "@type": "ValidationRule",
+          "label": "known schema",
+          "line": "v0.11",
+          "level": "rgbjs",
+          "errorCode": "rgbjs: unknown schema …",
+          "source": "rgbjs rust/v011/src/lib.rs (known schemas from rgb-schemas 0.11.1)",
+          "comment": "rgbjs only validates consignments for the standard schemas it can trust: NIA, CFA, UDA, IFA and PFA from rgb-schemas 0.11.1. Wallets do the same with the schemas they have imported.",
+          "check": "consignment.schema_id ∈ {NIA, CFA, UDA, IFA, PFA}"
+        },
+        {
+          "@id": "rgb:v011-schema-match",
+          "@type": "ValidationRule",
+          "label": "schema matches genesis",
+          "line": "v0.11",
+          "level": "upstream",
+          "errorCode": "Failure::SchemaMismatch",
+          "source": "rgb-consensus 0.11.1 src/validation/status.rs:136",
+          "comment": "The schema shipped in the consignment is the one the contract's genesis commits to.",
+          "check": "schema_id(consignment.schema) == genesis.schema_id"
+        },
+        {
+          "@id": "rgb:v011-trusted-types",
+          "@type": "ValidationRule",
+          "label": "trusted types",
+          "line": "v0.11",
+          "level": "upstream",
+          "errorCode": "Failure::TypeSystemMismatch; rgbjs: type … differs from the trusted … definition",
+          "source": "rgb-consensus 0.11.1 src/validation/validator.rs:285 (validate_schema)",
+          "comment": "Every type in the consignment equals the trusted definition with the same semantic ID. Upstream compares with Ty's PartialEq, which treats variants with the same tag as equal even if their names differ (rgb-strict-encoding Variant::eq); rgbjs also requires the names to match.",
+          "check": "∀ (id, ty) ∈ consignment.types: trusted[id] == ty (names included)"
+        }
+      ]
+    },
+    {
+      "@id": "rgb:v011-operations",
+      "@type": "RuleSet",
+      "module": "rgb:v011",
+      "label": "Genesis and operations",
+      "phase": "operation",
+      "comment": "Each operation (genesis and transitions) belongs to the contract, has the ID it claims, follows the schema, and passes its AluVM scripts.",
+      "rules": [
+        {
+          "@id": "rgb:v011-contract-id",
+          "@type": "ValidationRule",
+          "label": "contract ID commits to genesis",
+          "line": "v0.11",
+          "level": "informative",
+          "errorCode": "-",
+          "source": "rgb-consensus 0.11.1 src/operation/operations.rs (Genesis::contract_id)",
+          "comment": "The contract ID is a commitment to the genesis. Changing anything the genesis commits to yields a different contract, which a recipient will not mistake for the one in their invoice.",
+          "check": "contract_id == commit(genesis)"
+        },
+        {
+          "@id": "rgb:v011-same-contract",
+          "@type": "ValidationRule",
+          "label": "operations under the contract",
+          "line": "v0.11",
+          "level": "upstream",
+          "errorCode": "Failure::ContractMismatch",
+          "source": "rgb-consensus 0.11.1 src/validation/status.rs:209",
+          "comment": "Every transition in the consignment names this contract.",
+          "check": "∀ op ∈ transitions: op.contract_id == contract_id"
+        },
+        {
+          "@id": "rgb:v011-opid",
+          "@type": "ValidationRule",
+          "label": "operation IDs",
+          "line": "v0.11",
+          "level": "upstream",
+          "errorCode": "Failure::TransitionIdMismatch",
+          "source": "rgb-consensus 0.11.1 src/validation/status.rs:211",
+          "comment": "A transition's claimed ID is the commitment to its contents.",
+          "check": "∀ op: op.claimed_id == commit(op)"
+        },
+        {
+          "@id": "rgb:v011-schema-conformance",
+          "@type": "ValidationRule",
+          "label": "schema conformance",
+          "line": "v0.11",
+          "level": "upstream",
+          "errorCode": "Failure::SchemaUnknownGlobalStateType, SchemaUnknownAssignmentType, SchemaAssignmentOccurrences, SchemaInvalidGlobalValue",
+          "source": "rgb-consensus 0.11.1 src/validation/status.rs:171-202",
+          "comment": "Operations use only the global and owned state types their schema declares, with values of the declared semantic type and the declared number of assignments.",
+          "check": "∀ op: types(op) ⊆ schema ∧ occurrences(op) ∈ schema.bounds ∧ typecheck(op.globals)"
+        },
+        {
+          "@id": "rgb:v011-scripts-present",
+          "@type": "ValidationRule",
+          "label": "scripts present",
+          "line": "v0.11",
+          "level": "upstream",
+          "errorCode": "Failure::MissingScript",
+          "source": "rgb-consensus 0.11.1 src/validation/status.rs:260",
+          "comment": "Every AluVM library an operation's validation calls is shipped in the consignment.",
+          "check": "∀ lib ∈ called(schema): lib ∈ consignment.scripts"
+        },
+        {
+          "@id": "rgb:v011-aluvm",
+          "@type": "ValidationRule",
+          "label": "AluVM scripts",
+          "line": "v0.11",
+          "level": "upstream",
+          "errorCode": "Failure::ScriptFailure",
+          "source": "rgb-consensus 0.11.1 src/validation/status.rs:255",
+          "comment": "Each operation passes its schema's AluVM validation scripts, for example that a fungible transfer doesn't create value.",
+          "check": "∀ op: aluvm_run(schema.validator(op)) == ok"
+        }
+      ]
+    },
+    {
+      "@id": "rgb:v011-witnesses",
+      "@type": "RuleSet",
+      "module": "rgb:v011",
+      "label": "Witnesses and seals",
+      "phase": "witness",
+      "comment": "For transfers: each bundle is anchored in a witness transaction that closes the seals it spends. Whether the witness is mined is a separate, on-chain check.",
+      "rules": [
+        {
+          "@id": "rgb:v011-dbc-output",
+          "@type": "ValidationRule",
+          "label": "commitment output",
+          "line": "v0.11",
+          "level": "upstream",
+          "errorCode": "Failure::NoDbcOutput",
+          "source": "rgb-consensus 0.11.1 src/validation/status.rs:232",
+          "comment": "The witness transaction has the output its commitment method needs: OP_RETURN for opret, taproot for tapret.",
+          "check": "∃ out ∈ witness.outputs: out is OP_RETURN ∨ taproot"
+        },
+        {
+          "@id": "rgb:v011-anchor",
+          "@type": "ValidationRule",
+          "label": "anchor",
+          "line": "v0.11",
+          "level": "upstream",
+          "errorCode": "Failure::AnchorInvalid",
+          "source": "rgb-consensus 0.11.1 src/validation/status.rs:229",
+          "comment": "The bundle's multi-protocol commitment proof places it at the right position for this contract's protocol ID.",
+          "check": "mpc_verify(anchor.proof, contract_id, bundle_id)"
+        },
+        {
+          "@id": "rgb:v011-seal-closing",
+          "@type": "ValidationRule",
+          "label": "seal closing",
+          "line": "v0.11",
+          "level": "upstream",
+          "errorCode": "Failure::SealsInvalid",
+          "source": "rgb-consensus 0.11.1 src/validation/status.rs:226",
+          "comment": "The witness transaction spends every seal the bundle closes, and its commitment matches the bundle.",
+          "check": "∀ seal ∈ closed(bundle): seal.outpoint ∈ witness.inputs ∧ commitment(witness) == bundle"
+        },
+        {
+          "@id": "rgb:v011-terminals-hint",
+          "@type": "ValidationRule",
+          "label": "terminals are hints",
+          "line": "v0.11",
+          "level": "informative",
+          "errorCode": "-",
+          "source": "rgb-ops 0.11.1 src/containers/consignment.rs:250 (terminals)",
+          "comment": "The blinded seals a transfer lists as its terminals are not validated. A changed terminal leaves a valid consignment that no longer names the recipient's seal, so results must show the terminals, and a recipient checks that their own seal is there.",
+          "check": "result.terminals == consignment.terminals"
+        },
+        {
+          "@id": "rgb:v011-state-shows-changes",
+          "@type": "ValidationRule",
+          "label": "results show what changed",
+          "line": "v0.11",
+          "level": "informative",
+          "errorCode": "-",
+          "source": "rgb-ops 0.11.1 src/containers/anchors.rs:274 (PubWitness)",
+          "comment": "Fields of an unsigned witness transaction that its commitment doesn't cover (such as input sequence numbers) can change without making the transfer invalid; its txid changes instead. Results must show the witness IDs and state a consignment produces, so such a change is visible.",
+          "check": "result.witnesses and result.state reflect the consignment"
+        }
+      ]
+    }
+  ]
+}
