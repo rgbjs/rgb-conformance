@@ -33,7 +33,7 @@ node tools/make-vectors.mjs   # regenerate vectors/index.json
 python3 -I tools/og.py        # regenerate the social cards (needs Pillow)
 ```
 
-No dependencies beyond Node 18 or later. There's no CI deploy step: run `tools/refresh.sh` by hand when rgbjs changes, review the diff, and commit. To test another implementation, give `lib/runner.js` an engine with `parseInvoice(string)` and `validateConsignment(bytes)` for each line (see the top of that file).
+No dependencies beyond Node 18 or later. There is no CI: run `tools/refresh.sh` and `node test.js` by hand when rgbjs changes, review the diff, and commit. To test another implementation, give `lib/runner.js` an engine with `parseInvoice(string)` and `validateConsignment(bytes)` for each line (see the top of that file).
 
 ## Conformance levels
 
