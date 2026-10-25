@@ -131,7 +131,10 @@ function outcome (base, bad) {
   let r
   try { r = validateConsignment(bad) } catch (e) {
     if (/unreachable|RuntimeError/.test(e.message)) throw new Error(`wasm trap: ${e.message}`)
-    return { kind: 'throw: ' + e.message, expect: 'reject', message: e.message }
+    // Classify by the upstream reason: rgbjs prefixes what the input wasn't
+    // ("not a valid consignment: …"), which says nothing about which rule failed.
+    const reason = e.message.replace(/^not a valid consignment: /, '')
+    return { kind: 'throw: ' + reason, expect: 'reject', message: e.message }
   }
   if (!r.valid) return { kind: 'invalid: ' + r.error, expect: 'reject', message: r.error }
   if (r.contractId !== base.contractId) return { kind: 'differs: contract', expect: 'differs', differs: 'contractId' }
